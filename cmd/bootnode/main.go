@@ -25,29 +25,35 @@ import (
 	"os"
 
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	"github.com/ethereum/go-ethereum/core/forkid"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/discover"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/ethereum/go-ethereum/p2p/netutil"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 func main() {
 	var (
-		listenAddr  = flag.String("addr", ":30301", "listen address")
-		genKey      = flag.String("genkey", "", "generate a node key")
-		writeAddr   = flag.Bool("writeaddress", false, "write out the node's public key and quit")
-		nodeKeyFile = flag.String("nodekey", "", "private key filename")
-		nodeKeyHex  = flag.String("nodekeyhex", "", "private key as hex (for testing)")
-		natdesc     = flag.String("nat", "none", "port mapping mechanism (any|none|upnp|pmp|extip:<IP>)")
-		netrestrict = flag.String("netrestrict", "", "restrict network communication to the given IP networks (CIDR masks)")
-		runv5       = flag.Bool("v5", false, "run a v5 topic discovery bootnode")
-		verbosity   = flag.Int("verbosity", int(log.LvlInfo), "log verbosity (0-5)")
-		vmodule     = flag.String("vmodule", "", "log verbosity pattern")
+		listenAddr    = flag.String("addr", ":30301", "listen address")
+		genKey        = flag.String("genkey", "", "generate a node key")
+		writeAddr     = flag.Bool("writeaddress", false, "write out the node's public key and quit")
+		nodeKeyFile   = flag.String("nodekey", "", "private key filename")
+		nodeKeyHex    = flag.String("nodekeyhex", "", "private key as hex (for testing)")
+		natdesc       = flag.String("nat", "none", "port mapping mechanism (any|none|upnp|pmp|extip:<IP>)")
+		netrestrict   = flag.String("netrestrict", "", "restrict network communication to the given IP networks (CIDR masks)")
+		runv5         = flag.Bool("v5", false, "run a v5 topic discovery bootnode")
+		verbosity     = flag.Int("verbosity", int(log.LvlInfo), "log verbosity (0-5)")
+		vmodule       = flag.String("vmodule", "", "log verbosity pattern")
+		networkFilter = flag.String("network", "", "<bsc/chapel/rialto/yolo> filters nodes by eth ENR entry")
 
-		nodeKey *ecdsa.PrivateKey
-		err     error
+		nodeKey        *ecdsa.PrivateKey
+		filterFunction discover.NodeFilter
+		err            error
 	)
 	flag.Parse()
 
@@ -83,6 +89,10 @@ func main() {
 	case *nodeKeyHex != "":
 		if nodeKey, err = crypto.HexToECDSA(*nodeKeyHex); err != nil {
 			utils.Fatalf("-nodekeyhex: %v", err)
+		}
+	case *networkFilter != "":
+		if filterFunction, err = parseEthFilter(networkFilter); err != nil {
+			utils.Fatalf("-network: %v", err)
 		}
 	}
 
@@ -123,8 +133,9 @@ func main() {
 	db, _ := enode.OpenDB("")
 	ln := enode.NewLocalNode(db, nodeKey)
 	cfg := discover.Config{
-		PrivateKey:  nodeKey,
-		NetRestrict: restrictList,
+		PrivateKey:     nodeKey,
+		NetRestrict:    restrictList,
+		FilterFunction: filterFunction,
 	}
 	if *runv5 {
 		if _, err := discover.ListenV5(conn, ln, cfg); err != nil {
@@ -147,4 +158,32 @@ func printNotice(nodeKey *ecdsa.PublicKey, addr net.UDPAddr) {
 	fmt.Println(n.URLv4())
 	fmt.Println("Note: you're using cmd/bootnode, a developer tool.")
 	fmt.Println("We recommend using a regular node as bootstrap node for production deployments.")
+}
+
+func parseEthFilter(chain *string) (discover.NodeFilter, error) {
+	var filter forkid.Filter
+	switch *chain {
+	case "bsc":
+		filter = forkid.NewStaticFilter(params.BSCChainConfig, params.BSCGenesisHash)
+	case "chapel":
+		filter = forkid.NewStaticFilter(params.ChapelChainConfig, params.ChapelGenesisHash)
+	case "rialto":
+		filter = forkid.NewStaticFilter(params.RialtoChainConfig, params.RialtoGenesisHash)
+	case "yolo":
+		filter = forkid.NewStaticFilter(params.YoloV3ChainConfig, params.YoloV3GenesisHash)
+	default:
+		return nil, fmt.Errorf("unknown network %q", *chain)
+	}
+
+	f := func(r *enr.Record) bool {
+		var eth struct {
+			ForkID forkid.ID
+			Tail   []rlp.RawValue `rlp:"tail"`
+		}
+		if r.Load(enr.WithEntry("eth", &eth)) != nil {
+			return false
+		}
+		return filter(eth.ForkID) == nil
+	}
+	return f, nil
 }

@@ -80,6 +80,8 @@ type Table struct {
 	closeReq   chan struct{}
 	closed     chan struct{}
 
+	enrFilter NodeFilter
+
 	nodeAddedHook func(*node) // for testing
 }
 
@@ -100,7 +102,7 @@ type bucket struct {
 	ips          netutil.DistinctNetSet
 }
 
-func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger) (*Table, error) {
+func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger, filter NodeFilter) (*Table, error) {
 	tab := &Table{
 		net:        t,
 		db:         db,
@@ -111,6 +113,7 @@ func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger
 		rand:       mrand.New(mrand.NewSource(0)),
 		ips:        netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
 		log:        log,
+		enrFilter:  filter,
 	}
 	if err := tab.setFallbackNodes(bootnodes); err != nil {
 		return nil, err
@@ -517,6 +520,17 @@ func (tab *Table) addVerifiedNode(n *node) {
 	}
 	if n.ID() == tab.self().ID() {
 		return
+	}
+	if tab.enrFilter != nil {
+		node, err := tab.net.RequestENR(unwrapNode(n))
+		if err != nil {
+			tab.log.Error("XXX ENR request failed", "id", n.ID(), "addr", n.addr(), "err", err)
+		} else {
+			if !tab.enrFilter(node.Record()) {
+				return
+			}
+			// n = &node{Node: *node, addedAt: n.addedAt, livenessChecks: n.livenessChecks}
+		}
 	}
 
 	tab.mutex.Lock()

@@ -35,18 +35,21 @@ type UDPConn interface {
 	LocalAddr() net.Addr
 }
 
+type NodeFilter func(*enr.Record) bool
+
 // Config holds settings for the discovery listener.
 type Config struct {
 	// These settings are required and configure the UDP listener:
 	PrivateKey *ecdsa.PrivateKey
 
 	// These settings are optional:
-	NetRestrict  *netutil.Netlist   // list of allowed IP networks
-	Bootnodes    []*enode.Node      // list of bootstrap nodes
-	Unhandled    chan<- ReadPacket  // unhandled packets are sent on this channel
-	Log          log.Logger         // if set, log messages go here
-	ValidSchemes enr.IdentityScheme // allowed identity schemes
-	Clock        mclock.Clock
+	NetRestrict    *netutil.Netlist   // list of allowed IP networks
+	Bootnodes      []*enode.Node      // list of bootstrap nodes
+	Unhandled      chan<- ReadPacket  // unhandled packets are sent on this channel
+	Log            log.Logger         // if set, log messages go here
+	ValidSchemes   enr.IdentityScheme // allowed identity schemes
+	Clock          mclock.Clock
+	FilterFunction NodeFilter // function for filtering ENR entries
 }
 
 func (cfg Config) withDefaults() Config {
