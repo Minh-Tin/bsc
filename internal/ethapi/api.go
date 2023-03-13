@@ -1128,6 +1128,99 @@ func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionA
 	return DoEstimateGas(ctx, s.b, args, bNrOrHash, s.b.RPCGasCap())
 }
 
+// EstimateGasManyTx returns an estimate of the amount of gas needed to execute the
+// given transaction against the current pending block.
+func (s *PublicBlockChainAPI) EstimateGasManyTx(ctx context.Context, args []TransactionArgs,
+	blockNrOrHash *rpc.BlockNumberOrHash) ([]interface{}, error) {
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+	if blockNrOrHash != nil {
+		bNrOrHash = *blockNrOrHash
+	}
+	return DoManyCall(ctx, s.b, args, bNrOrHash, nil, 0, s.b.RPCGasCap())
+}
+
+func DoManyCall(ctx context.Context, b Backend, args []TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash,
+	overrides *StateOverride, timeout time.Duration, globalGasCap uint64) ([]interface{}, error) {
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+	state, header, err := b.StateAndHeaderByNumberOrHash(ctx, blockNrOrHash)
+	if state == nil || err != nil {
+		return []interface{}{}, err
+	}
+	if err := overrides.Apply(state); err != nil {
+		return []interface{}{}, err
+	}
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	if len(args) < 1 {
+		return []interface{}{}, errors.New("Empty Args")
+	}
+	msg, err := args[len(args)-1].ToMessage(globalGasCap, header.BaseFee)
+	if err != nil {
+		return []interface{}{}, err
+	}
+	evm, vmError, err := b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
+	if err != nil {
+		return []interface{}{}, err
+	}
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	go func() {
+		<-ctx.Done()
+		evm.Cancel()
+	}()
+	// Execute the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	var result []uint64
+	var errs []string
+	var firstErr error
+	for i, a := range args {
+		msg, err = a.ToMessage(globalGasCap, header.BaseFee)
+		if err != nil {
+			result = append(result, 0)
+			errs = append(errs, err.Error())
+			if firstErr == nil {
+				firstErr = errors.New(fmt.Sprintf("%d", i))
+			}
+			continue
+		}
+		res, err := core.ApplyMessage(evm, msg, gp)
+		if er := vmError(); er != nil {
+			return nil, er
+		}
+		if evm.Cancelled() {
+			return nil, fmt.Errorf("execution aborted (timeout = %v)", timeout)
+		}
+		if err != nil {
+			result = append(result, 0)
+			errs = append(errs, err.Error())
+			if firstErr == nil {
+				firstErr = errors.New(fmt.Sprintf("%d", i))
+			}
+			continue
+		} else {
+			result = append(result, res.UsedGas)
+			errs = append(errs, "")
+		}
+	}
+
+	// If the timer caused an abort, return an appropriate error message
+	if evm.Cancelled() {
+		return []interface{}{}, fmt.Errorf("execution aborted (timeout = %v)", timeout)
+	}
+	return []interface{}{result, errs}, nil
+}
+
 // GetDiffAccounts returns changed accounts in a specific block number.
 func (s *PublicBlockChainAPI) GetDiffAccounts(ctx context.Context, blockNr rpc.BlockNumber) ([]common.Address, error) {
 	if s.b.Chain() == nil {
