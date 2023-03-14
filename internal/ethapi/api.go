@@ -214,6 +214,28 @@ func (s *PublicTxPoolAPI) ContentFrom(addr common.Address) map[string]map[string
 	return content
 }
 
+// ContentTo returns the transactions contained within the transaction pool.
+func (s *PublicTxPoolAPI) ContentTo(addr common.Address) map[string]map[string]map[string]*RPCTransaction {
+	content := map[string]map[string]map[string]*RPCTransaction{
+		"pending": make(map[string]map[string]*RPCTransaction),
+	}
+	pending, _ := s.b.TxPoolContent()
+	curHeader := s.b.CurrentHeader()
+	// Flatten the pending transactions
+	for account, txs := range pending {
+		dump := make(map[string]*RPCTransaction)
+		for _, tx := range txs {
+			if to := tx.To(); to != nil && *to == addr {
+				dump[fmt.Sprintf("%d", tx.Nonce())] = newRPCPendingTransaction(tx, curHeader, s.b.ChainConfig())
+			}
+		}
+		if len(dump) > 0 {
+			content["pending"][account.Hex()] = dump
+		}
+	}
+	return content
+}
+
 // Status returns the number of pending and queued transaction in the pool.
 func (s *PublicTxPoolAPI) Status() map[string]hexutil.Uint {
 	pending, queue := s.b.Stats()
