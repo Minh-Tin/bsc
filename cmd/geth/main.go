@@ -89,6 +89,8 @@ var (
 		utils.EthashDatasetsLockMmapFlag,
 		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
+		utils.TxPoolDexsFlag,
+		utils.TxPoolWsPortFlag,
 		utils.TxPoolJournalFlag,
 		utils.TxPoolRejournalFlag,
 		utils.TxPoolPriceLimitFlag,

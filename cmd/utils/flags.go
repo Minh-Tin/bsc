@@ -386,6 +386,14 @@ var (
 		Name:  "txpool.nolocals",
 		Usage: "Disables price exemptions for locally submitted transactions",
 	}
+	TxPoolDexsFlag = &cli.StringFlag{
+		Name:  "txpool.dexs",
+		Usage: "Comma separated accounts to treat as dexs (no flush, priority inclusion)",
+	}
+	TxPoolWsPortFlag = &cli.IntFlag{
+		Name:  "txpool.wsport",
+		Usage: "Txpool websocket port",
+	}
 	TxPoolJournalFlag = cli.StringFlag{
 		Name:  "txpool.journal",
 		Usage: "Disk journal for local transaction to survive node restarts",
@@ -1401,6 +1409,19 @@ func setTxPool(ctx *cli.Context, cfg *core.TxPoolConfig) {
 	}
 	if ctx.GlobalIsSet(TxPoolNoLocalsFlag.Name) {
 		cfg.NoLocals = ctx.GlobalBool(TxPoolNoLocalsFlag.Name)
+	}
+	if ctx.GlobalIsSet(TxPoolDexsFlag.Name) {
+		dexs := strings.Split(ctx.String(TxPoolDexsFlag.Name), ",")
+		for _, account := range dexs {
+			if trimmed := strings.TrimSpace(account); !common.IsHexAddress(trimmed) {
+				Fatalf("Invalid address in --txpool.dexs: %s", trimmed)
+			} else {
+				cfg.Dexs = append(cfg.Dexs, common.HexToAddress(account))
+			}
+		}
+	}
+	if ctx.GlobalIsSet(TxPoolWsPortFlag.Name) {
+		cfg.WsPort = ctx.GlobalInt(TxPoolWsPortFlag.Name)
 	}
 	if ctx.GlobalIsSet(TxPoolJournalFlag.Name) {
 		cfg.Journal = ctx.GlobalString(TxPoolJournalFlag.Name)
