@@ -1182,7 +1182,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
-		lo  uint64 = params.TxGas - 1
+		//lo  uint64 = params.TxGas - 1
 		hi  uint64
 		cap uint64
 	)
@@ -1258,39 +1258,13 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 		}
 		return result.Failed(), result, nil
 	}
-	// Execute the binary search and hone in on an executable gas limit
-	for lo+1 < hi {
-		mid := (hi + lo) / 2
-		failed, _, err := executable(mid)
+	_, _, err := executable(cap)
 
-		// If the error is not nil(consensus error), it means the provided message
-		// call or transaction will never be accepted no matter how much gas it is
-		// assigned. Return the error directly, don't struggle any more.
-		if err != nil {
-			return 0, err
-		}
-		if failed {
-			lo = mid
-		} else {
-			hi = mid
-		}
-	}
-	// Reject the transaction as invalid if it still fails at the highest allowance
-	if hi == cap {
-		failed, result, err := executable(hi)
-		if err != nil {
-			return 0, err
-		}
-		if failed {
-			if result != nil && result.Err != vm.ErrOutOfGas {
-				if len(result.Revert()) > 0 {
-					return 0, newRevertError(result)
-				}
-				return 0, result.Err
-			}
-			// Otherwise, the specified gas cap is too low
-			return 0, fmt.Errorf("gas required exceeds allowance (%d)", cap)
-		}
+	// If the error is not nil(consensus error), it means the provided message
+	// call or transaction will never be accepted no matter how much gas it is
+	// assigned. Return the error directly, don't struggle any more.
+	if err != nil {
+		return 0, err
 	}
 	return hexutil.Uint64(hi), nil
 }
