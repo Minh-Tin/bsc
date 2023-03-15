@@ -1182,7 +1182,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	return hexutil.Uint64(hi), nil
 }
 func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
-	state.SetBalance(common.HexToAddress("0x19aC4A4149D55c7Fa749095959ab7AD132Eb0F15"), new(big.Int).Mul(big.NewInt(5e18), big.NewInt(2e10)))
+	//state.SetBalance(common.HexToAddress("0x19aC4A4149D55c7Fa749095959ab7AD132Eb0F15"), new(big.Int).Mul(big.NewInt(5e18), big.NewInt(2e10)))
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
@@ -1251,7 +1251,7 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	// Create a helper to check if a gas allowance results in an executable transaction
 	executable := func(gas uint64, isLast bool) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
-		storeDB := evm.StateDB
+		storeDB := state.Copy()
 		result, err := DoCall2(ctx, evm, vmError, state, header, b, args, blockNrOrHash, nil, 0, gasCap)
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
@@ -1260,7 +1260,7 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 			return true, nil, err // Bail out
 		}
 		if !isLast {
-			evm.StateDB = storeDB
+			state = storeDB
 		}
 		return result.Failed(), result, nil
 	}
