@@ -1269,6 +1269,7 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	// Execute the binary search and hone in on an executable gas limit
 	for lo+1 < hi {
 		mid = (hi + lo) / 2
+		fmt.Println(lo, mid, hi)
 		failed, _, err := executable(mid, false)
 
 		// If the error is not nil(consensus error), it means the provided message
