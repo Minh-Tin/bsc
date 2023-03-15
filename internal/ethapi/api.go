@@ -973,7 +973,8 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 }
 func DoCall2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
-
+	spew.Dump(overrides)
+	spew.Dump(args)
 	if err := overrides.Apply(state); err != nil {
 		return nil, err
 	}
@@ -989,7 +990,6 @@ func DoCall2(ctx context.Context, evm *vm.EVM, vmError func() error, state *stat
 	// this makes sure resources are cleaned up.
 	defer cancel()
 
-	// Get a new instance of the EVM.
 	msg, err := args.ToMessage(globalGasCap, header.BaseFee)
 	if err != nil {
 		return nil, err
@@ -1322,6 +1322,7 @@ func (s *PublicBlockChainAPI) EstimateGasManyTx(ctx context.Context, args []Tran
 	if err != nil {
 		return nil, err
 	}
+
 	evm, vmError, err := s.b.GetEVM(ctx, msg, state, header, &vm.Config{NoBaseFee: true})
 	if err != nil {
 		return nil, err
