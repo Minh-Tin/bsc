@@ -995,13 +995,6 @@ func DoCall2(ctx context.Context, evm *vm.EVM, vmError func() error, state *stat
 		return nil, err
 	}
 
-	// Wait for the context to be done and cancel the evm. Even if the
-	// EVM has finished, cancelling may be done (repeatedly)
-	gopool.Submit(func() {
-		<-ctx.Done()
-		evm.Cancel()
-	})
-
 	// Execute the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	result, err := core.ApplyMessage(evm, msg, gp)
