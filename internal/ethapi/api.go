@@ -1272,7 +1272,6 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 		mid = (hi + lo) / 2
 		fmt.Println(lo, mid, hi)
 		failed, _, err := executable(mid)
-
 		// If the error is not nil(consensus error), it means the provided message
 		// call or transaction will never be accepted no matter how much gas it is
 		// assigned. Return the error directly, don't struggle any more.
