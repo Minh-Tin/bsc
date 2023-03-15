@@ -1187,6 +1187,7 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	var (
 		lo  uint64 = params.TxGas - 1
 		hi  uint64
+		mid uint64
 		cap uint64
 	)
 	// Use zero address if sender unspecified.
@@ -1264,19 +1265,10 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 		}
 		return result.Failed(), result, nil
 	}
-	mid := (hi + lo) / 2
-	_, _, err := executable(mid, false)
-
-	// If the error is not nil(consensus error), it means the provided message
-	// call or transaction will never be accepted no matter how much gas it is
-	// assigned. Return the error directly, don't struggle any more.
-	if err != nil {
-		return 0, err
-	}
 
 	// Execute the binary search and hone in on an executable gas limit
 	for lo+1 < hi {
-		mid := (hi + lo) / 2
+		mid = (hi + lo) / 2
 		failed, _, err := executable(mid, false)
 
 		// If the error is not nil(consensus error), it means the provided message
