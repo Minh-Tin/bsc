@@ -1265,7 +1265,7 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	storeDB := state.Copy()
 	// Execute the binary search and hone in on an executable gas limit
 	for lo+1 < hi {
-		state = storeDB.Copy()
+		state = storeDB.CopyDoPrefetch()
 		fmt.Println(state.GetBalance(common.HexToAddress("0x19aC4A4149D55c7Fa749095959ab7AD132Eb0F15")))
 		mid = (hi + lo) / 2
 		fmt.Println(lo, mid, hi)
