@@ -1250,9 +1250,9 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	cap = hi
 
 	// Create a helper to check if a gas allowance results in an executable transaction
-	executable := func(gas uint64, isLast bool) (bool, *core.ExecutionResult, error) {
+	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
-		storeDB := state.Copy()
+
 		result, err := DoCall2(ctx, evm, vmError, state, header, b, args, blockNrOrHash, nil, 0, gasCap)
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
@@ -1260,17 +1260,15 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 			}
 			return true, nil, err // Bail out
 		}
-		if !isLast {
-			state = storeDB
-		}
 		return result.Failed(), result, nil
 	}
-
+	storeDB := state.Copy()
 	// Execute the binary search and hone in on an executable gas limit
 	for lo+1 < hi {
+		state = storeDB.Copy()
 		mid = (hi + lo) / 2
 		fmt.Println(lo, mid, hi)
-		failed, _, err := executable(mid, false)
+		failed, _, err := executable(mid)
 
 		// If the error is not nil(consensus error), it means the provided message
 		// call or transaction will never be accepted no matter how much gas it is
@@ -1286,8 +1284,8 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	}
 
 	// Reject the transaction as invalid if it still fails at the highest allowance
-	if hi == cap || hi == mid {
-		failed, result, err := executable(hi, true)
+	if hi == cap {
+		failed, result, err := executable(hi)
 		if err != nil {
 			return 0, err
 		}
