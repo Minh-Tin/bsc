@@ -971,7 +971,9 @@ func DoCall(ctx context.Context, b Backend, args TransactionArgs, blockNrOrHash 
 	}
 	return result, nil
 }
-func DoCall2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride, timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
+func DoCall2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header,
+	b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride,
+	timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
 	spew.Dump(overrides)
 	spew.Dump(args)
@@ -1182,7 +1184,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
-		//lo  uint64 = params.TxGas - 1
+		lo  uint64 = params.TxGas - 1
 		hi  uint64
 		cap uint64
 	)
@@ -1246,9 +1248,9 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 	cap = hi
 
 	// Create a helper to check if a gas allowance results in an executable transaction
-	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
+	executable := func(gas uint64, isLast bool) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
-
+		storeDB := evm.StateDB
 		result, err := DoCall2(ctx, evm, vmError, state, header, b, args, blockNrOrHash, nil, 0, gasCap)
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
@@ -1256,15 +1258,55 @@ func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, stat
 			}
 			return true, nil, err // Bail out
 		}
+		if !isLast {
+			evm.StateDB = storeDB
+		}
 		return result.Failed(), result, nil
 	}
-	_, _, err := executable(cap)
+	mid := (hi + lo) / 2
+	_, _, err := executable(mid, false)
 
 	// If the error is not nil(consensus error), it means the provided message
 	// call or transaction will never be accepted no matter how much gas it is
 	// assigned. Return the error directly, don't struggle any more.
 	if err != nil {
 		return 0, err
+	}
+
+	// Execute the binary search and hone in on an executable gas limit
+	for lo+1 < hi {
+		mid := (hi + lo) / 2
+		failed, _, err := executable(mid, false)
+
+		// If the error is not nil(consensus error), it means the provided message
+		// call or transaction will never be accepted no matter how much gas it is
+		// assigned. Return the error directly, don't struggle any more.
+		if err != nil {
+			return 0, err
+		}
+		if failed {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+
+	// Reject the transaction as invalid if it still fails at the highest allowance
+	if hi == cap || hi == mid {
+		failed, result, err := executable(hi, true)
+		if err != nil {
+			return 0, err
+		}
+		if failed {
+			if result != nil && result.Err != vm.ErrOutOfGas {
+				if len(result.Revert()) > 0 {
+					return 0, newRevertError(result)
+				}
+				return 0, result.Err
+			}
+			// Otherwise, the specified gas cap is too low
+			return 0, fmt.Errorf("gas required exceeds allowance (%d)", cap)
+		}
 	}
 	return hexutil.Uint64(hi), nil
 }
