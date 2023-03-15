@@ -1182,7 +1182,7 @@ func DoEstimateGas(ctx context.Context, b Backend, args TransactionArgs, blockNr
 	return hexutil.Uint64(hi), nil
 }
 func DoEstimateGas2(ctx context.Context, evm *vm.EVM, vmError func() error, state *state.StateDB, header *types.Header, b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, error) {
-	state.SetBalance(common.HexToAddress("0x19aC4A4149D55c7Fa749095959ab7AD132Eb0F15"), big.NewInt(5e18))
+	state.SetBalance(common.HexToAddress("0x19aC4A4149D55c7Fa749095959ab7AD132Eb0F15"), new(big.Int).Mul(big.NewInt(5e18), big.NewInt(2e10)))
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
 		lo  uint64 = params.TxGas - 1
