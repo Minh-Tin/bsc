@@ -975,8 +975,6 @@ func DoCall2(ctx context.Context, evm *vm.EVM, vmError func() error, state *stat
 	b Backend, args TransactionArgs, blockNrOrHash rpc.BlockNumberOrHash, overrides *StateOverride,
 	timeout time.Duration, globalGasCap uint64) (*core.ExecutionResult, error) {
 	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
-	spew.Dump(overrides)
-	spew.Dump(args)
 	if err := overrides.Apply(state); err != nil {
 		return nil, err
 	}
